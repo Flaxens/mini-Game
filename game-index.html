@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Game mit Wellen</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      overflow: hidden;
+      color: white;
+      font-family: sans-serif;
+    }
+
+    #game {
+      position: relative;
+      width: 1040px;
+      height: 840px;
+      margin: auto;
+      background: #222;
+      border: 2px solid white;
+    }
+
+    .player, .enemy, .bullet {
+      position: absolute;
+    }
+
+    .player {
+      width: 40px;
+      height: 40px;
+      background: red;
+    }
+
+    .enemy {
+      width: 30px;
+      height: 30px;
+      background: limegreen;
+    }
+
+    .bullet {
+      width: 10px;
+      height: 5px;
+      background: cyan;
+    }
+
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 20px;
+      z-index: 1000;
+    }
+
+    #hearts {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    #pauseText {
+      text-align: center;
+      font-size: 40px;
+      display: none;
+      margin-top: 20px;
+    }
+
+    #waveButton {
+      position: absolute;
+      left: 20px;
+      bottom: 20px;
+      padding: 10px 20px;
+      background: #444;
+      color: white;
+      border: 2px solid white;
+      font-size: 18px;
+      cursor: pointer;
+      display: none;
+    }
+
+    #waveInfo {
+      margin-top: 10px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="ui">
+    <div id="hearts"></div>
+    <div>
+      Punkte: <span id="score">0</span> |
+      Highscore: <span id="highscore">0</span>
+    </div>
+    <div id="waveInfo">Welle: <span id="wave">0</span></div>
+    <div id="pauseText">PAUSE</div>
+  </div>
+
+  <button id="waveButton">Nächste Welle starten</button>
+
+  <div id="game">
+    <div id="player" class="player"></div>
+  </div>
+
+  <script>
+    const game = document.getElementById("game");
+    const player = document.getElementById("player");
+    const pauseText = document.getElementById("pauseText");
+    const scoreDisplay = document.getElementById("score");
+    const highscoreDisplay = document.getElementById("highscore");
+    const heartsDisplay = document.getElementById("hearts");
+    const waveDisplay = document.getElementById("wave");
+    const waveButton = document.getElementById("waveButton");
+	waveButton.style.display = "block"; // ← Start-Button wird angezeigt
+
+    let score = 0;
+    let posX = 100, posY = 100;
+    let lives = 3;
+    let paused = false;
+    let currentWave = 0;
+    let enemiesToSpawn = 0;
+    let spawnInterval;
+    let waveActive = false;
+    let keys = {};
+
+    // Highscore
+    let highscore = localStorage.getItem("highscore");
+    if (!highscore) highscore = 0;
+    else highscore = parseInt(highscore);
+    highscoreDisplay.textContent = highscore;
+
+    function updateHighscore() {
+      if (score > highscore) {
+        highscore = score;
+        localStorage.setItem("highscore", highscore);
+        highscoreDisplay.textContent = highscore;
+      }
+    }
+
+    function updateHearts() {
+      heartsDisplay.innerHTML = "❤️ ".repeat(lives);
+    }
+
+    updateHearts();
+
+    document.addEventListener("keydown", e => {
+      if (e.key.toLowerCase() === "p") {
+        paused = !paused;
+        pauseText.style.display = paused ? "block" : "none";
+      } else {
+        keys[e.key.toLowerCase()] = true;
+      }
+    });
+
+    document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+    function movePlayer() {
+      if (keys['w'] && posY > 0) posY -= 5;
+      if (keys['s'] && posY < 800) posY += 5;
+      if (keys['a'] && posX > 0) posX -= 5;
+      if (keys['d'] && posX < 1000) posX += 5;
+      player.style.left = posX + "px";
+      player.style.top = posY + "px";
+    }
+
+    let bullets = [];
+    document.addEventListener("keydown", e => {
+      if (e.code === "Space" && !paused) {
+        const bullet = document.createElement("div");
+        bullet.className = "bullet";
+        bullet.style.left = (posX + 40) + "px";
+        bullet.style.top = (posY + 17) + "px";
+        game.appendChild(bullet);
+        bullets.push(bullet);
+      }
+    });
+
+    function updateBullets() {
+      bullets.forEach((b, i) => {
+        let x = parseInt(b.style.left);
+        if (x > 1000) {
+          b.remove();
+          bullets.splice(i, 1);
+        } else {
+          b.style.left = (x + 10) + "px";
+        }
+      });
+    }
+
+    let enemies = [];
+
+    function spawnEnemy() {
+      if (!paused && waveActive && enemiesToSpawn > 0) {
+        const enemy = document.createElement("div");
+        enemy.className = "enemy";
+        enemy.style.left = "1000px";
+        enemy.style.top = Math.random() * (800 - 30) + "px";
+        game.appendChild(enemy);
+        enemies.push(enemy);
+        enemiesToSpawn--;
+
+        // Wenn alle Gegner gespawnt sind, warten bis sie besiegt wurden
+        if (enemiesToSpawn <= 0) {
+          clearInterval(spawnInterval);
+        }
+      }
+    }
+
+    function updateEnemies() {
+      enemies.forEach((e, i) => {
+        let x = parseInt(e.style.left);
+        if (x < -30) {
+          e.remove();
+          enemies.splice(i, 1);
+        } else {
+          e.style.left = (x - 3) + "px";
+        }
+
+        if (checkCollision(e, player)) {
+          e.remove();
+          enemies.splice(i, 1);
+          lives--;
+          updateHearts();
+          if (lives <= 0) {
+            alert("Spiel vorbei!");
+            location.reload();
+          }
+        }
+
+        bullets.forEach((b, j) => {
+          if (checkCollision(e, b)) {
+            e.remove();
+            b.remove();
+            enemies.splice(i, 1);
+            bullets.splice(j, 1);
+            score++;
+            scoreDisplay.textContent = score;
+            updateHighscore();
+          }
+        });
+      });
+
+      // Wenn keine Gegner mehr da sind → neue Welle starten
+      if (waveActive && enemies.length === 0 && enemiesToSpawn === 0) {
+        waveActive = false;
+        waveButton.style.display = "block";
+      }
+    }
+
+    function checkCollision(a, b) {
+      const rect1 = a.getBoundingClientRect();
+      const rect2 = b.getBoundingClientRect();
+      return !(
+        rect1.right < rect2.left ||
+        rect1.left > rect2.right ||
+        rect1.bottom < rect2.top ||
+        rect1.top > rect2.bottom
+      );
+    }
+
+    waveButton.addEventListener("click", () => {
+      currentWave++;
+      waveDisplay.textContent = currentWave;
+      enemiesToSpawn = 5 + currentWave * 3;
+      waveActive = true;
+      waveButton.style.display = "none";
+      spawnInterval = setInterval(spawnEnemy, 800 - currentWave * 50); // schneller pro Welle
+    });
+
+    function gameLoop() {
+      if (!paused) {
+        movePlayer();
+        updateBullets();
+        updateEnemies();
+      }
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
